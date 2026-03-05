@@ -1,0 +1,15 @@
+{
+  "name": "openwb-dashboard-backend",
+  "version": "1.0.0",
+  "description": "openWB MQTT Dashboard Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mqtt": "^5.3.4",
+    "nodemailer": "^6.9.13",
+    "socket.io": "^4.7.4"
+  }
+}

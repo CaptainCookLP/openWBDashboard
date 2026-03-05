@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>openWB Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">openWB <span class="logo-sub">Dashboard</span></span>
+      </div>
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="settings">⚙️ Einstellungen</button>
+      </nav>
+      <div class="connection-status" id="connStatus">
+        <span class="dot disconnected"></span>
+        <span id="connLabel">Verbinde…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Global Energy Overview -->
+  <div id="tab-dashboard">
+  <section class="global-section">
+    <div class="global-cards">
+      <div class="global-card grid-card">
+        <div class="gc-icon">🔌</div>
+        <div class="gc-body">
+          <div class="gc-label">Netz</div>
+          <div class="gc-value" id="gridPower">–</div>
+        </div>
+      </div>
+      <div class="global-card pv-card">
+        <div class="gc-icon">☀️</div>
+        <div class="gc-body">
+          <div class="gc-label">Photovoltaik</div>
+          <div class="gc-value" id="pvPower">–</div>
+        </div>
+      </div>
+      <div class="global-card bat-card">
+        <div class="gc-icon">🔋</div>
+        <div class="gc-body">
+          <div class="gc-label">Speicher</div>
+          <div class="gc-value" id="batPower">–</div>
+          <div class="gc-sub" id="batSoc"></div>
+        </div>
+      </div>
+      <div class="global-card house-card">
+        <div class="gc-icon">🏠</div>
+        <div class="gc-body">
+          <div class="gc-label">Hausverbrauch</div>
+          <div class="gc-value" id="housePower">–</div>
+        </div>
+      </div>
+      <div class="global-card cp-card">
+        <div class="gc-icon">🚗</div>
+        <div class="gc-body">
+          <div class="gc-label">Alle Ladepunkte</div>
+          <div class="gc-value" id="allCpPower">–</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Charge Points Grid -->
+  <main>
+    <div class="section-header">
+      <h2>Ladepunkte</h2>
+      <div class="last-update">Aktualisiert: <span id="lastUpdate">–</span></div>
+    </div>
+    <div class="cp-grid" id="cpGrid">
+      <!-- populated by JS -->
+    </div>
+  </main>
+  </div><!-- /#tab-dashboard -->
+
+  <!-- Settings Tab -->
+  <div id="tab-settings" style="display:none;">
+    <div class="settings-wrap">
+
+      <!-- Import / Export -->
+      <section class="settings-section settings-section-slim">
+        <div class="import-export-bar">
+          <span class="ie-label">Konfiguration</span>
+          <a href="/api/export-config" download="openwb-dashboard-config.json" class="btn btn-secondary">&#8595; Exportieren</a>
+          <label class="btn btn-secondary" style="cursor:pointer;margin:0">
+            &#8593; Importieren
+            <input type="file" id="importFileInput" accept=".json" style="display:none" />
+          </label>
+          <div class="settings-feedback" id="importFeedback" style="margin:0"></div>
+        </div>
+      </section>
+
+      <!-- RFID Users -->
+      <section class="settings-section">
+        <h3 class="settings-title">🔑 RFID-Verwaltung</h3>
+        <div class="table-wrap">
+          <table class="rfid-table" id="rfidTable">
+            <thead>
+              <tr>
+                <th>RFID</th><th>Name</th><th>E-Mail</th><th>Konto-ID</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="rfidTbody"></tbody>
+          </table>
+        </div>
+        <form class="rfid-form" id="rfidForm">
+          <input type="text" id="rfidNew"    placeholder="RFID-Tag"  required />
+          <input type="text" id="rfidName"   placeholder="Name" />
+          <input type="email" id="rfidMail"  placeholder="E-Mail" />
+          <input type="text" id="rfidKonto"  placeholder="Konto-ID" />
+          <button type="submit" class="btn btn-primary">Hinzufügen</button>
+        </form>
+        <div class="settings-feedback" id="rfidFeedback"></div>
+      </section>
+
+      <!-- SMTP -->
+      <section class="settings-section">
+        <div class="section-title-row">
+          <h3 class="settings-title">✉️ E-Mail (SMTP)</h3>
+          <label class="toggle-label">
+            <input type="checkbox" id="smtpEnabled" />
+            <span>Aktiviert</span>
+          </label>
+        </div>
+        <form class="settings-form" id="smtpForm">
+          <div class="form-row">
+            <label>SMTP-Host</label>
+            <input type="text" name="host" placeholder="mail.example.com" />
+          </div>
+          <div class="form-row">
+            <label>Port</label>
+            <input type="number" name="port" placeholder="587" />
+          </div>
+          <div class="form-row">
+            <label>TLS/SSL</label>
+            <input type="checkbox" name="secure" />
+          </div>
+          <div class="form-row">
+            <label>Benutzername</label>
+            <input type="text" name="user" placeholder="user@example.com" />
+          </div>
+          <div class="form-row">
+            <label>Passwort</label>
+            <input type="password" name="pass" placeholder="••••••••" />
+          </div>
+          <div class="form-row">
+            <label>Absender (From)</label>
+            <input type="text" name="from" placeholder="noreply@example.com" />
+          </div>
+          <div class="form-row">
+            <label>Empfänger (To)</label>
+            <input type="text" name="to" placeholder="empfaenger@example.com" />
+          </div>
+          <!-- Mail template -->
+          <div class="form-row form-row-full">
+            <label>Betreff</label>
+            <input type="text" name="emailSubject" placeholder="Ladevorgang beendet – {{cpName}} (LP {{cpId}})" />
+          </div>
+          <div class="form-row form-row-full">
+            <label>E-Mail HTML-Body
+              <span class="var-hint">
+                Verfügbare Variablen:
+                <code>{{cpName}}</code> <code>{{cpId}}</code>
+                <code>{{rfid}}</code> <code>{{userName}}</code>
+                <code>{{userMail}}</code> <code>{{kontoId}}</code>
+                <code>{{chargeDuration}}</code> <code>{{importedKwh}}</code>
+                <code>{{rangeCharged}}</code> <code>{{power}}</code>
+                <code>{{timestamp}}</code>
+              </span>
+            </label>
+            <textarea name="emailBody" rows="10"
+              placeholder="&lt;p&gt;Hallo {{userName}},&lt;/p&gt;
+&lt;p&gt;das Fahrzeug an &lt;strong&gt;{{cpName}}&lt;/strong&gt; lädt nicht mehr, ist aber noch angeschlossen.&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;RFID: {{rfid}}&lt;/li&gt;
+  &lt;li&gt;Angeschlossen seit: {{chargeDuration}}&lt;/li&gt;
+  &lt;li&gt;Geladene Energie: {{importedKwh}} kWh&lt;/li&gt;
+  &lt;li&gt;Zeitpunkt: {{timestamp}}&lt;/li&gt;
+&lt;/ul&gt;"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Speichern</button>
+            <button type="button" class="btn btn-secondary" id="testEmailBtn">Test-E-Mail senden</button>
+          </div>
+        </form>
+        <div class="settings-feedback" id="smtpFeedback"></div>
+      </section>
+
+      <!-- Webhook -->
+      <section class="settings-section">
+        <div class="section-title-row">
+          <h3 class="settings-title">🔗 Webhook</h3>
+          <label class="toggle-label">
+            <input type="checkbox" id="webhookEnabled" />
+            <span>Aktiviert</span>
+          </label>
+        </div>
+        <form class="settings-form" id="webhookForm">
+          <div class="form-row">
+            <label>URL</label>
+            <input type="url" name="url" placeholder="https://hooks.example.com/..." />
+          </div>
+          <div class="form-row">
+            <label>Zusätzliche Header (JSON)</label>
+            <input type="text" name="headers" placeholder='{"Authorization":"Bearer token"}' />
+          </div>
+          <div class="form-row">
+            <label>Body-Template (optional)</label>
+            <textarea name="template" rows="4" placeholder="Leer = Standard-JSON. Platzhalter: {{event}} {{cpName}} {{rfid}} {{userName}} {{timestamp}}"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Speichern</button>
+            <button type="button" class="btn btn-secondary" id="testWebhookBtn">Test-Webhook senden</button>
+          </div>
+        </form>
+        <div class="settings-feedback" id="webhookFeedback"></div>
+      </section>
+
+      <!-- Monitor / Benachrichtigungen -->
+      <section class="settings-section">
+        <div class="section-title-row">
+          <h3 class="settings-title">⏱ Benachrichtigungs-Trigger</h3>
+          <label class="toggle-label">
+            <input type="checkbox" id="monitorEnabled" />
+            <span>Aktiviert</span>
+          </label>
+        </div>
+        <form class="settings-form" id="monitorForm">
+          <div class="form-row">
+            <label>Verzögerung (Minuten)
+              <span class="var-hint">Wie lange muss das Fahrzeug verbunden aber nicht laden, bevor eine Benachrichtigung gesendet wird.</span>
+            </label>
+            <input type="number" name="delayMinutes" min="1" max="120" placeholder="5" />
+          </div>
+          <div class="form-row">
+            <label>Leistungsschwelle (W)
+              <span class="var-hint">Ladeleistung unter diesem Wert gilt als &ldquo;nicht laden&rdquo;. Z.B. 100 W.</span>
+            </label>
+            <input type="number" name="thresholdW" min="0" max="10000" placeholder="100" />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Speichern</button>
+          </div>
+        </form>
+        <div class="settings-feedback" id="monitorFeedback"></div>
+      </section>
+
+    </div>
+  </div><!-- /#tab-settings -->
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

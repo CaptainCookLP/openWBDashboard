@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Ladesäule – openWB Dashboard</title>
+  <link rel="stylesheet" href="station.css" />
+</head>
+<body>
+  <!-- Header bar -->
+  <header>
+    <div class="header-left">
+      <span class="logo-icon">⚡</span>
+      <span class="station-title" id="stationTitle">Ladesäule</span>
+    </div>
+    <div class="header-right">
+      <span class="clock" id="clock">--:--</span>
+      <span class="conn-dot disconnected" id="connDot"></span>
+    </div>
+  </header>
+
+  <!-- Two chargepoint panels -->
+  <main class="dual-panel">
+    <section class="cp-panel" id="panelLeft">
+      <div class="panel-inner state-unknown">
+        <div class="panel-header">
+          <span class="panel-id" id="leftId">LP ?</span>
+          <span class="panel-badge badge-unknown" id="leftBadge">Unbekannt</span>
+        </div>
+        <div class="panel-name" id="leftName">–</div>
+
+        <!-- User info (visible when RFID present) -->
+        <div class="panel-user" id="leftUser" style="display:none;">
+          <span class="user-icon">👤</span>
+          <span class="user-name" id="leftUserName">–</span>
+        </div>
+
+        <!-- Power -->
+        <div class="panel-power">
+          <span class="power-val" id="leftPower">–</span>
+          <span class="power-unit" id="leftPowerUnit"></span>
+        </div>
+
+        <!-- Stats grid -->
+        <div class="panel-stats">
+          <div class="stat">
+            <span class="stat-label">Geladen</span>
+            <span class="stat-value" id="leftEnergy">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Angeschlossen</span>
+            <span class="stat-value" id="leftDuration">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Fahrzeug-SOC</span>
+            <span class="stat-value" id="leftSoc">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">RFID</span>
+            <span class="stat-value stat-mono" id="leftRfid">–</span>
+          </div>
+        </div>
+
+        <!-- Phases -->
+        <div class="panel-phases" id="leftPhases" style="display:none;">
+          <div class="phase"><span class="phase-label">L1</span><span class="phase-val" id="leftPh1">–</span></div>
+          <div class="phase"><span class="phase-label">L2</span><span class="phase-val" id="leftPh2">–</span></div>
+          <div class="phase"><span class="phase-label">L3</span><span class="phase-val" id="leftPh3">–</span></div>
+        </div>
+
+        <!-- Status accent bar -->
+        <div class="panel-status-bar" id="leftStatusBar"></div>
+      </div>
+    </section>
+
+    <div class="panel-divider"></div>
+
+    <section class="cp-panel" id="panelRight">
+      <div class="panel-inner state-unknown">
+        <div class="panel-header">
+          <span class="panel-id" id="rightId">LP ?</span>
+          <span class="panel-badge badge-unknown" id="rightBadge">Unbekannt</span>
+        </div>
+        <div class="panel-name" id="rightName">–</div>
+
+        <div class="panel-user" id="rightUser" style="display:none;">
+          <span class="user-icon">👤</span>
+          <span class="user-name" id="rightUserName">–</span>
+        </div>
+
+        <div class="panel-power">
+          <span class="power-val" id="rightPower">–</span>
+          <span class="power-unit" id="rightPowerUnit"></span>
+        </div>
+
+        <div class="panel-stats">
+          <div class="stat">
+            <span class="stat-label">Geladen</span>
+            <span class="stat-value" id="rightEnergy">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Angeschlossen</span>
+            <span class="stat-value" id="rightDuration">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Fahrzeug-SOC</span>
+            <span class="stat-value" id="rightSoc">–</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">RFID</span>
+            <span class="stat-value stat-mono" id="rightRfid">–</span>
+          </div>
+        </div>
+
+        <div class="panel-phases" id="rightPhases" style="display:none;">
+          <div class="phase"><span class="phase-label">L1</span><span class="phase-val" id="rightPh1">–</span></div>
+          <div class="phase"><span class="phase-label">L2</span><span class="phase-val" id="rightPh2">–</span></div>
+          <div class="phase"><span class="phase-label">L3</span><span class="phase-val" id="rightPh3">–</span></div>
+        </div>
+
+        <div class="panel-status-bar" id="rightStatusBar"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- RFID login popup overlay -->
+  <div class="popup-overlay" id="popupOverlay">
+    <div class="popup-card" id="popupCard">
+      <div class="popup-icon">🏷️</div>
+      <div class="popup-title" id="popupTitle">Willkommen!</div>
+      <div class="popup-user" id="popupUser">–</div>
+      <div class="popup-details">
+        <div class="popup-detail"><span class="pd-label">Ladepunkt</span><span class="pd-value" id="popupCp">–</span></div>
+        <div class="popup-detail"><span class="pd-label">RFID</span><span class="pd-value popup-mono" id="popupRfid">–</span></div>
+        <div class="popup-detail"><span class="pd-label">Konto-ID</span><span class="pd-value" id="popupKonto">–</span></div>
+      </div>
+      <div class="popup-hint">Ladevorgang wird gestartet…</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="station.js"></script>
+</body>
+</html>
