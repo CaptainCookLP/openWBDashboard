@@ -96,6 +96,24 @@
         </div>
       </section>
 
+      <!-- MQTT Broker -->
+      <section class="settings-section">
+        <h3 class="settings-title">📡 MQTT-Broker</h3>
+        <form class="settings-form" id="mqttBrokerForm">
+          <div class="form-row">
+            <label>Broker-URL
+              <span class="var-hint">Format: <code>mqtt://host:1883</code> oder <code>mqtts://host:8883</code></span>
+            </label>
+            <input type="text" id="mqttBrokerInput" name="mqttBroker"
+                   placeholder="mqtt://192.168.1.100:1883" required />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Speichern &amp; Verbinden</button>
+          </div>
+        </form>
+        <div class="settings-feedback" id="mqttBrokerFeedback"></div>
+      </section>
+
       <!-- RFID Users -->
       <section class="settings-section">
         <h3 class="settings-title">🔑 RFID-Verwaltung</h3>

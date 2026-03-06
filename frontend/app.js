@@ -75,6 +75,11 @@ function createCpCard(id) {
       <span class="cp-status-badge badge-unknown" id="cp-${id}-badge">Unbekannt</span>
     </div>
 
+    <!-- Fault indicator -->
+    <div class="cp-fault-banner" id="cp-${id}-fault" style="display:none;">
+      ⚠️ <span id="cp-${id}-fault-msg">Fehler erkannt</span>
+    </div>
+
     <!-- RFID / Lock row -->
     <div class="cp-rfid-row" id="cp-${id}-rfid-row">
       <div class="cp-lock-pill" id="cp-${id}-lock-pill" style="display:none;">🔒 Gesperrt</div>
@@ -244,12 +249,12 @@ function updateChargepoint(id, cp) {
     }
   }
 
-  // Countdown: use server-side idleSince (set when plugged + power ≤ threshold + rfid)
+  // Countdown: only show after at least one charging session has occurred
   const countdownEl = document.getElementById(`cp-${id}-countdown`);
   const countdownVal = document.getElementById(`cp-${id}-countdown-val`);
   const idleSince = cp.idleSince || null;
   if (countdownEl) {
-    if (idleSince && plugged && cp.rfid) {
+    if (idleSince && plugged && cp.rfid && cp.hasCharged) {
       const elapsed   = now - idleSince;
       const remaining = Math.max(0, NOTIFY_DELAY_MS - elapsed);
       countdownEl.style.display = '';
@@ -266,6 +271,20 @@ function updateChargepoint(id, cp) {
     } else {
       countdownEl.style.display = 'none';
       cpNotifiedSet.delete(id);
+    }
+  }
+
+  // Fault state
+  const faultBanner = document.getElementById(`cp-${id}-fault`);
+  const faultMsg    = document.getElementById(`cp-${id}-fault-msg`);
+  if (faultBanner) {
+    const fault = cp.faultState != null ? parseInt(cp.faultState) : 0;
+    if (fault > 0) {
+      faultBanner.style.display = '';
+      const faultLabels = { 1: 'Warnung', 2: 'Fehler' };
+      if (faultMsg) faultMsg.textContent = faultLabels[fault] || `Fehlercode ${fault}`;
+    } else {
+      faultBanner.style.display = 'none';
     }
   }
 
@@ -585,6 +604,8 @@ async function loadSettings() {
     populateSmtp(cfg.smtp);
     populateWebhook(cfg.webhook);
     populateMonitor(cfg.monitor);
+    const srvSettings = await (await fetch('/api/settings')).json();
+    populateMqttSettings(srvSettings);
   } catch (e) { console.error('loadSettings error:', e); }
 }
 
@@ -632,4 +653,21 @@ document.getElementById('importFileInput')?.addEventListener('change', async (e)
     showFeedback('importFeedback', 'Importfehler: ' + err.message, true);
   }
   e.target.value = ''; // reset so same file can be re-imported
+});
+
+// ── MQTT Broker Settings ───────────────────────────────────────────────────────
+
+function populateMqttSettings(s) {
+  const input = document.getElementById('mqttBrokerInput');
+  if (input && s && s.mqttBroker) input.value = s.mqttBroker;
+}
+
+document.getElementById('mqttBrokerForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const broker = document.getElementById('mqttBrokerInput')?.value.trim();
+  if (!broker) return;
+  try {
+    await apiPost('/api/settings', { mqttBroker: broker });
+    showFeedback('mqttBrokerFeedback', 'MQTT-Broker gespeichert. Verbindung wird neu aufgebaut…');
+  } catch (err) { showFeedback('mqttBrokerFeedback', err.message, true); }
 });

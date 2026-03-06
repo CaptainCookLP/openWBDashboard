@@ -14,8 +14,13 @@ const PORT        = parseInt(process.env.PORT || '3000', 10);
 const DATA_DIR    = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const RFID_FILE   = path.join(DATA_DIR, 'rfid-users.json');
-const NOTIFY_FILE = path.join(DATA_DIR, 'notify-config.json');
+const RFID_FILE     = path.join(DATA_DIR, 'rfid-users.json');
+const NOTIFY_FILE   = path.join(DATA_DIR, 'notify-config.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+let settings = loadJSON(SETTINGS_FILE, {});
+// MQTT broker: prefer persisted setting, then env var, then default
+let mqttBrokerUrl = settings.mqttBroker || MQTT_BROKER;
 
 function loadJSON(file, def) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return def; }
@@ -89,6 +94,8 @@ function setCP(id, field, value) {
       idleSince: null,
       importedSincePlugged: null,
       rangeCharged: null,
+      faultState: null,
+      hasCharged: false,
       lastUpdate: null
     };
   }
@@ -100,7 +107,12 @@ function setCP(id, field, value) {
       state.chargepoints[id].idleSince = null;
       state.chargepoints[id].importedSincePlugged = null;
       state.chargepoints[id].rangeCharged = null;
+      state.chargepoints[id].hasCharged = false;
     }
+  }
+  // Set hasCharged flag on first active charging session
+  if (field === 'chargingState' && value === true) {
+    state.chargepoints[id].hasCharged = true;
   }
   state.chargepoints[id][field] = value;
   state.chargepoints[id].lastUpdate = Date.now();
@@ -138,6 +150,15 @@ function applyTemplate(tpl, vars) {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? '');
 }
 
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function sendEmail(vars) {
   const s = notifyConfig.smtp;
   if (!s || !s.host) throw new Error('SMTP nicht konfiguriert (host fehlt)');
@@ -152,16 +173,16 @@ async function sendEmail(vars) {
   const defaultHtml = `
     <div style="font-family:sans-serif;font-size:14px;color:#333;max-width:600px;">
       <p>Hallo,</p>
-      <p>das Fahrzeug an <strong>${vars.cpName}</strong> lädt nicht mehr, ist aber noch angeschlossen.</p>
+      <p>das Fahrzeug an <strong>${escHtml(vars.cpName)}</strong> lädt nicht mehr, ist aber noch angeschlossen.</p>
       <p style="color:#c00;font-weight:600;">Bitte Ladesäule frei machen.</p>
       <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Ladepunkt</td><td style="padding:6px 0;font-weight:600;">${vars.cpName}</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">RFID</td><td style="padding:6px 0;">${vars.rfid}</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Benutzer</td><td style="padding:6px 0;">${vars.userName || '–'}</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">E-Mail</td><td style="padding:6px 0;">${vars.userMail || '–'}</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Angeschlossen seit</td><td style="padding:6px 0;">${vars.chargeDuration}</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Geladen</td><td style="padding:6px 0;font-weight:600;">${vars.importedKwh} kWh</td></tr>
-        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Zeitpunkt</td><td style="padding:6px 0;">${vars.timestamp}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Ladepunkt</td><td style="padding:6px 0;font-weight:600;">${escHtml(vars.cpName)}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">RFID</td><td style="padding:6px 0;">${escHtml(vars.rfid)}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Benutzer</td><td style="padding:6px 0;">${escHtml(vars.userName) || '–'}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">E-Mail</td><td style="padding:6px 0;">${escHtml(vars.userMail) || '–'}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Angeschlossen seit</td><td style="padding:6px 0;">${escHtml(vars.chargeDuration)}</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Geladen</td><td style="padding:6px 0;font-weight:600;">${escHtml(vars.importedKwh)} kWh</td></tr>
+        <tr><td style="padding:6px 16px 6px 0;color:#888;white-space:nowrap;">Zeitpunkt</td><td style="padding:6px 0;">${escHtml(vars.timestamp)}</td></tr>
       </table>
     </div>
   `;
@@ -239,7 +260,8 @@ function handleMqttMessage(topic, payload) {
       case 'imported':       setCP(id, 'imported',      parseFloat2(msg)); break;
       case 'current':        setCP(id, 'current',       parseFloat2(msg)); break;
       case 'phases_in_use':  setCP(id, 'phasesInUse',   parseInt(msg,10)); break;
-      case 'connected_vehicle/soc': setCP(id, 'soc',     parseFloat2(msg)); break;
+      case 'connected_vehicle/soc': setCP(id, 'soc',       parseFloat2(msg));   break;
+      case 'fault_state':            setCP(id, 'faultState', parseInt(msg, 10));  break;
     }
     return;
   }
@@ -277,12 +299,18 @@ function handleMqttMessage(topic, payload) {
   }
 
   // v2 global energy sources
+  // openWB/counter/set/home_consumption
+  if (parts[1] === 'counter' && parts[2] === 'set' && parts[3] === 'home_consumption') {
+    state.house.power = parseFloat2(msg);
+    return;
+  }
+
   // openWB/counter/0/get/power|imported|exported
   if (parts[1] === 'counter' && parts[3] === 'get') {
-    if (parts[4] === 'power')    state.grid.power    = parseFloat2(msg);
-    if (parts[4] === 'imported') state.grid.imported = parseFloat2(msg);
-    if (parts[4] === 'exported') state.grid.exported = parseFloat2(msg);
-    if (parts[4] === 'frequency') state.grid.frequency = parseFloat2(msg);
+    if (parts[4] === 'power')     state.grid.power      = parseFloat2(msg);
+    if (parts[4] === 'imported')  state.grid.imported   = parseFloat2(msg);
+    if (parts[4] === 'exported')  state.grid.exported   = parseFloat2(msg);
+    if (parts[4] === 'frequency') state.grid.frequency  = parseFloat2(msg);
     return;
   }
 
@@ -358,9 +386,16 @@ app.get('/api/rfid-users', (req, res) => res.json(rfidUsers));
 
 app.post('/api/rfid-users', (req, res) => {
   const { rfid, name, mail, kontoId } = req.body || {};
-  if (!rfid) return res.status(400).json({ error: 'rfid ist erforderlich' });
-  if (rfidUsers.find(u => u.rfid === rfid)) return res.status(409).json({ error: 'RFID bereits vorhanden' });
-  rfidUsers.push({ rfid: rfid.trim(), name: name || '', mail: mail || '', kontoId: kontoId || '' });
+  if (!rfid || typeof rfid !== 'string') return res.status(400).json({ error: 'rfid ist erforderlich' });
+  const rfidClean = rfid.trim().slice(0, 64);
+  if (!rfidClean) return res.status(400).json({ error: 'rfid darf nicht leer sein' });
+  if (rfidUsers.find(u => u.rfid === rfidClean)) return res.status(409).json({ error: 'RFID bereits vorhanden' });
+  rfidUsers.push({
+    rfid:    rfidClean,
+    name:    String(name    || '').trim().slice(0, 128),
+    mail:    String(mail    || '').trim().slice(0, 256),
+    kontoId: String(kontoId || '').trim().slice(0, 64),
+  });
   saveJSON(RFID_FILE, rfidUsers);
   res.status(201).json(rfidUsers);
 });
@@ -368,7 +403,13 @@ app.post('/api/rfid-users', (req, res) => {
 app.put('/api/rfid-users/:rfid', (req, res) => {
   const idx = rfidUsers.findIndex(u => u.rfid === req.params.rfid);
   if (idx === -1) return res.status(404).json({ error: 'Nicht gefunden' });
-  rfidUsers[idx] = { ...rfidUsers[idx], ...req.body, rfid: req.params.rfid };
+  const { name, mail, kontoId } = req.body || {};
+  rfidUsers[idx] = {
+    rfid:    rfidUsers[idx].rfid,
+    name:    String(name    ?? rfidUsers[idx].name).trim().slice(0, 128),
+    mail:    String(mail    ?? rfidUsers[idx].mail).trim().slice(0, 256),
+    kontoId: String(kontoId ?? rfidUsers[idx].kontoId).trim().slice(0, 64),
+  };
   saveJSON(RFID_FILE, rfidUsers);
   res.json(rfidUsers[idx]);
 });
@@ -420,20 +461,46 @@ app.get('/api/export-config', (req, res) => {
 
 app.post('/api/import-config', (req, res) => {
   const { notifyConfig: nc, rfidUsers: ru } = req.body || {};
-  if (nc && typeof nc === 'object') {
+  if (nc && typeof nc === 'object' && !Array.isArray(nc)) {
     notifyConfig = nc;
     saveJSON(NOTIFY_FILE, notifyConfig);
   }
   if (Array.isArray(ru)) {
-    rfidUsers = ru;
+    rfidUsers = ru
+      .filter(u => u && typeof u.rfid === 'string' && u.rfid.trim())
+      .map(u => ({
+        rfid:    String(u.rfid).trim().slice(0, 64),
+        name:    String(u.name    || '').trim().slice(0, 128),
+        mail:    String(u.mail    || '').trim().slice(0, 256),
+        kontoId: String(u.kontoId || '').trim().slice(0, 64),
+      }));
     saveJSON(RFID_FILE, rfidUsers);
   }
   res.json({ ok: true });
 });
 
+// ─── Settings API (MQTT broker etc.) ────────────────────────────────────────
+app.get('/api/settings', (req, res) => {
+  res.json({ mqttBroker: mqttBrokerUrl });
+});
+
+app.post('/api/settings', (req, res) => {
+  const { mqttBroker } = req.body || {};
+  if (mqttBroker !== undefined) {
+    if (!/^(mqtt|mqtts|ws|wss):\/\/.+/.test(String(mqttBroker).trim())) {
+      return res.status(400).json({ error: 'Ungültige MQTT-Broker-URL. Erlaubte Formate: mqtt://, mqtts://, ws://, wss://' });
+    }
+    settings.mqttBroker = String(mqttBroker).trim();
+    saveJSON(SETTINGS_FILE, settings);
+    mqttBrokerUrl = settings.mqttBroker;
+    initMqtt(mqttBrokerUrl);
+  }
+  res.json({ ok: true, mqttBroker: mqttBrokerUrl });
+});
+
 // ─── Core API ─────────────────────────────────────────────────────────────────
 app.get('/api/state',  (req, res) => res.json(state));
-app.get('/api/config', (req, res) => res.json({ broker: MQTT_BROKER, monitor: notifyConfig.monitor || {} }));
+app.get('/api/config', (req, res) => res.json({ broker: mqttBrokerUrl, monitor: notifyConfig.monitor || {} }));
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -455,6 +522,7 @@ setInterval(() => {
   for (const cp of Object.values(state.chargepoints)) {
     const id = cp.id;
     const idle = cp.plugState === true && cp.rfid &&
+                 cp.hasCharged === true &&
                  cp.power != null && Math.abs(cp.power) <= thresholdW;
     if (idle) {
       if (!cp.idleSince) cp.idleSince = now;
@@ -472,31 +540,38 @@ setInterval(() => {
 
 // ─── MQTT ─────────────────────────────────────────────────────────────────────
 
-console.log(`Connecting to MQTT broker: ${MQTT_BROKER}`);
+let mqttClient = null;
 
-const mqttClient = mqtt.connect(MQTT_BROKER, {
-  clientId: `openwb-dashboard-${Math.random().toString(16).slice(2)}`,
-  clean: true,
-  reconnectPeriod: 5000,
-  connectTimeout: 10000,
-});
-
-mqttClient.on('connect', () => {
-  console.log('MQTT connected');
-  mqttClient.subscribe('openWB/#', { qos: 0 }, (err) => {
-    if (err) console.error('Subscribe error:', err);
-    else console.log('Subscribed to openWB/#');
+function initMqtt(brokerUrl) {
+  if (mqttClient) {
+    try { mqttClient.end(true); } catch {}
+    mqttClient = null;
+  }
+  console.log(`Connecting to MQTT broker: ${brokerUrl}`);
+  const client = mqtt.connect(brokerUrl, {
+    clientId: `openwb-dashboard-${Math.random().toString(16).slice(2)}`,
+    clean: true,
+    reconnectPeriod: 5000,
+    connectTimeout: 10000,
   });
-});
+  client.on('connect', () => {
+    console.log('MQTT connected');
+    client.subscribe('openWB/#', { qos: 0 }, (err) => {
+      if (err) console.error('Subscribe error:', err);
+      else console.log('Subscribed to openWB/#');
+    });
+  });
+  client.on('message', (topic, payload) => {
+    try { handleMqttMessage(topic, payload); }
+    catch (e) { console.error('Parse error for topic', topic, e.message); }
+  });
+  client.on('error', (err) => console.error('MQTT error:', err.message));
+  client.on('reconnect', () => console.log('MQTT reconnecting...'));
+  client.on('offline', () => console.log('MQTT offline'));
+  mqttClient = client;
+}
 
-mqttClient.on('message', (topic, payload) => {
-  try { handleMqttMessage(topic, payload); }
-  catch (e) { console.error('Parse error for topic', topic, e.message); }
-});
-
-mqttClient.on('error', (err) => console.error('MQTT error:', err.message));
-mqttClient.on('reconnect', () => console.log('MQTT reconnecting...'));
-mqttClient.on('offline', () => console.log('MQTT offline'));
+initMqtt(mqttBrokerUrl);
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 

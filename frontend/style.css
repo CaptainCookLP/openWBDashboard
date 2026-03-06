@@ -316,6 +316,21 @@ main {
   white-space: nowrap;
 }
 
+/* ── Fault Banner ── */
+.cp-fault-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 18px;
+  background: rgba(239,68,68,.15);
+  border: 1px solid rgba(239,68,68,.4);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
 /* ── Countdown ── */
 .cp-countdown {
   display: flex;
