@@ -106,6 +106,7 @@ header {
 .panel-inner.state-charging { border-color: var(--success); }
 .panel-inner.state-plugged  { border-color: var(--warning); }
 .panel-inner.state-idle     { border-color: var(--border);  }
+.panel-inner.state-fault    { border-color: var(--danger); background: rgba(239,68,68,.08); }
 
 /* colour accent bar at bottom */
 .panel-status-bar {
@@ -116,6 +117,7 @@ header {
 .state-charging .panel-status-bar { background: var(--success); }
 .state-plugged  .panel-status-bar { background: var(--warning); }
 .state-idle     .panel-status-bar { background: var(--muted);   }
+.state-fault    .panel-status-bar { background: var(--danger);  }
 .state-unknown  .panel-status-bar { background: var(--border);  }
 
 /* ── Panel Header ── */
@@ -144,6 +146,7 @@ header {
 .badge-charging { background: rgba(34,197,94,.15); color: var(--success); }
 .badge-plugged  { background: rgba(245,158,11,.15); color: var(--warning); }
 .badge-idle     { background: rgba(107,114,128,.15); color: var(--muted);  }
+.badge-fault    { background: rgba(239,68,68,.2);    color: var(--danger); }
 .badge-unknown  { background: rgba(107,114,128,.15); color: var(--muted);  }
 
 .panel-name {

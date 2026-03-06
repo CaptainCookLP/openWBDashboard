@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - MQTT_BROKER=mqtt://10.100.95.10:1883
+      - MQTT_BROKER=
       - PORT=3000
     volumes:
       # Mount the frontend as a read-only volume so changes are immediate

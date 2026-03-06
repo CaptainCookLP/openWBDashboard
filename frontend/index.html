@@ -15,6 +15,8 @@
       </div>
       <nav class="tab-nav">
         <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="protocol">📋 Ladeprotokoll</button>
+        <button class="tab-btn" data-tab="logs">📝 Logs</button>
         <button class="tab-btn" data-tab="settings">⚙️ Einstellungen</button>
       </nav>
       <div class="connection-status" id="connStatus">
@@ -78,6 +80,68 @@
     </div>
   </main>
   </div><!-- /#tab-dashboard -->
+
+  <!-- Charge Protocol Tab -->
+  <div id="tab-protocol" style="display:none;">
+    <div class="settings-wrap">
+      <section class="settings-section">
+        <div class="section-title-row">
+          <h3 class="settings-title">📋 Ladeprotokoll</h3>
+          <button class="btn btn-danger btn-sm" id="clearProtocolBtn">Löschen</button>
+        </div>
+        <div class="table-wrap">
+          <table class="rfid-table">
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Ladepunkt</th>
+                <th>Benutzer</th>
+                <th>Geladen</th>
+                <th>Ladezeit</th>
+                <th>Anschlusszeit</th>
+                <th>Nur verbunden</th>
+              </tr>
+            </thead>
+            <tbody id="protocolTbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div><!-- /#tab-protocol -->
+
+  <!-- Logs Tab -->
+  <div id="tab-logs" style="display:none;">
+    <div class="settings-wrap">
+      <section class="settings-section">
+        <div class="section-title-row">
+          <h3 class="settings-title">📝 System-Log</h3>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="logCatFilter" class="log-filter-select">
+              <option value="">Alle</option>
+              <option value="charge">Ladevorgänge</option>
+              <option value="mail">E-Mails</option>
+              <option value="error">Fehler</option>
+              <option value="protocol">Protokoll</option>
+              <option value="system">System</option>
+            </select>
+            <button class="btn btn-danger btn-sm" id="clearLogsBtn">Löschen</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="rfid-table">
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Kategorie</th>
+                <th>Nachricht</th>
+              </tr>
+            </thead>
+            <tbody id="logTbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div><!-- /#tab-logs -->
 
   <!-- Settings Tab -->
   <div id="tab-settings" style="display:none;">
@@ -208,6 +272,27 @@
           </div>
         </form>
         <div class="settings-feedback" id="smtpFeedback"></div>
+      </section>
+
+      <!-- Email Template Upload -->
+      <section class="settings-section">
+        <h3 class="settings-title">📄 E-Mail-Template (HTML-Datei)</h3>
+        <p style="font-size:.82rem;color:var(--text-sub);margin-bottom:12px;">
+          Eigene HTML-Datei hochladen, die als E-Mail-Body verwendet wird.
+          Verfügbare Platzhalter: <code>{{cpName}}</code> <code>{{cpId}}</code>
+          <code>{{rfid}}</code> <code>{{userName}}</code> <code>{{userMail}}</code>
+          <code>{{kontoId}}</code> <code>{{chargeDuration}}</code> <code>{{importedKwh}}</code>
+          <code>{{timestamp}}</code>
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <label class="btn btn-primary" style="cursor:pointer;margin:0">
+            📁 HTML-Datei hochladen
+            <input type="file" id="emailTplFile" accept=".html,.htm" style="display:none" />
+          </label>
+          <button class="btn btn-danger btn-sm" id="deleteEmailTplBtn">Template löschen</button>
+        </div>
+        <pre class="email-tpl-preview" id="emailTplPreview">(Kein eigenes Template vorhanden)</pre>
+        <div class="settings-feedback" id="emailTplFeedback"></div>
       </section>
 
       <!-- Webhook -->

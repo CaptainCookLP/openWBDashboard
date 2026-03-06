@@ -47,10 +47,11 @@ function fmtCurrent(a) {
 }
 
 function getStateInfo(cp) {
-  if (cp.chargingState === true)  return { cls: 'state-charging', badge: 'badge-charging', label: 'Lädt' };
-  if (cp.plugState === true)      return { cls: 'state-plugged',  badge: 'badge-plugged',  label: 'Verbunden' };
-  if (cp.plugState === false)     return { cls: 'state-idle',     badge: 'badge-idle',     label: 'Frei' };
-  return                                   { cls: 'state-unknown', badge: 'badge-unknown',  label: 'Unbekannt' };
+  if (cp.faultState > 0)           return { cls: 'state-fault',    badge: 'badge-fault',    label: cp.faultState === 1 ? 'Warnung' : 'Fehler' };
+  if (cp.chargingState === true)   return { cls: 'state-charging', badge: 'badge-charging', label: 'Lädt' };
+  if (cp.plugState === true)       return { cls: 'state-plugged',  badge: 'badge-plugged',  label: 'Verbunden' };
+  if (cp.plugState === false)      return { cls: 'state-idle',     badge: 'badge-idle',     label: 'Frei' };
+  return                                    { cls: 'state-unknown', badge: 'badge-unknown',  label: 'Unbekannt' };
 }
 
 function maxCurrentForBar(a) {
@@ -93,6 +94,13 @@ function createCpCard(id) {
     <div class="cp-user-row" id="cp-${id}-user-row" style="display:none;">
       <span class="cp-user-name" id="cp-${id}-user-name"></span>
       <span class="cp-connect-time" id="cp-${id}-connect-time"></span>
+    </div>
+
+    <!-- Idle time (Zeit nicht am Laden) -->
+    <div class="cp-idle-row" id="cp-${id}-idle-row" style="display:none;">
+      <span class="idle-icon">⏸</span>
+      <span class="idle-label">Nicht am Laden seit</span>
+      <span class="idle-value" id="cp-${id}-idle-val">–</span>
     </div>
 
     <!-- Countdown (only when plugged + not charging) -->
@@ -246,6 +254,19 @@ function updateChargepoint(id, cp) {
       setText(`cp-${id}-connect-time`, pluggedSince ? fmtDuration(now - pluggedSince) : '');
     } else {
       userRow.style.display = 'none';
+    }
+  }
+
+  // Idle time (not charging since)
+  const idleRow = document.getElementById(`cp-${id}-idle-row`);
+  const idleVal = document.getElementById(`cp-${id}-idle-val`);
+  if (idleRow) {
+    const csSince = cp.chargingStoppedSince || null;
+    if (csSince && plugged && cp.chargingState !== true) {
+      idleRow.style.display = '';
+      if (idleVal) idleVal.textContent = fmtDuration(now - csSince);
+    } else {
+      idleRow.style.display = 'none';
     }
   }
 
@@ -404,6 +425,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
     document.getElementById(`tab-${tab}`).style.display = '';
     if (tab === 'settings') loadSettings();
+    if (tab === 'logs') loadLogs();
+    if (tab === 'protocol') loadProtocol();
   });
 });
 
@@ -606,6 +629,9 @@ async function loadSettings() {
     populateMonitor(cfg.monitor);
     const srvSettings = await (await fetch('/api/settings')).json();
     populateMqttSettings(srvSettings);
+    loadEmailTemplate();
+    loadLogs();
+    loadProtocol();
   } catch (e) { console.error('loadSettings error:', e); }
 }
 
@@ -670,4 +696,117 @@ document.getElementById('mqttBrokerForm')?.addEventListener('submit', async (e) 
     await apiPost('/api/settings', { mqttBroker: broker });
     showFeedback('mqttBrokerFeedback', 'MQTT-Broker gespeichert. Verbindung wird neu aufgebaut…');
   } catch (err) { showFeedback('mqttBrokerFeedback', err.message, true); }
+});
+
+// ── Email Template Upload ─────────────────────────────────────────────────────
+
+document.getElementById('emailTplFile')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const html = await file.text();
+    await apiPost('/api/email-template', { html });
+    showFeedback('emailTplFeedback', 'E-Mail-Template hochgeladen ✓');
+    loadEmailTemplate();
+  } catch (err) {
+    showFeedback('emailTplFeedback', err.message, true);
+  }
+  e.target.value = '';
+});
+
+document.getElementById('deleteEmailTplBtn')?.addEventListener('click', async () => {
+  try {
+    await apiDelete('/api/email-template');
+    showFeedback('emailTplFeedback', 'Template gelöscht – Standard-Template wird verwendet.');
+    const preview = document.getElementById('emailTplPreview');
+    if (preview) preview.textContent = '(Kein eigenes Template vorhanden)';
+  } catch (err) { showFeedback('emailTplFeedback', err.message, true); }
+});
+
+async function loadEmailTemplate() {
+  const preview = document.getElementById('emailTplPreview');
+  if (!preview) return;
+  try {
+    const res = await fetch('/api/email-template');
+    if (res.ok) {
+      const html = await res.text();
+      preview.textContent = html.slice(0, 2000) + (html.length > 2000 ? '…' : '');
+    } else {
+      preview.textContent = '(Kein eigenes Template vorhanden – Standard-Template wird verwendet)';
+    }
+  } catch { preview.textContent = '(Fehler beim Laden)'; }
+}
+
+// ── Logs Tab ──────────────────────────────────────────────────────────────────
+
+async function loadLogs(cat) {
+  const tbody = document.getElementById('logTbody');
+  if (!tbody) return;
+  try {
+    const url = cat ? `/api/logs?cat=${encodeURIComponent(cat)}&limit=200` : '/api/logs?limit=200';
+    const entries = await (await fetch(url)).json();
+    tbody.innerHTML = '';
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted)">Keine Einträge</td></tr>';
+      return;
+    }
+    entries.reverse().forEach(e => {
+      const tr = document.createElement('tr');
+      const catCls = { error: 'log-cat-error', mail: 'log-cat-mail', charge: 'log-cat-charge', protocol: 'log-cat-protocol', system: 'log-cat-system' }[e.cat] || '';
+      tr.innerHTML = `<td class=\"col-mono\" style=\"white-space:nowrap;\">${esc(e.ts?.replace('T',' ').slice(0,19) || '')}</td><td><span class=\"log-cat-badge ${catCls}\">${esc(e.cat)}</span></td><td>${esc(e.msg)}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (err) { console.error('loadLogs error:', err); }
+}
+
+document.getElementById('logCatFilter')?.addEventListener('change', (e) => {
+  loadLogs(e.target.value || null);
+});
+
+document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
+  if (!confirm('Alle Logs löschen?')) return;
+  await apiDelete('/api/logs');
+  loadLogs();
+});
+
+// ── Charge Protocol Tab ──────────────────────────────────────────────────────
+
+function fmtMs(ms) {
+  if (!ms || ms < 0) return '–';
+  const m = Math.floor(ms / 60000);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m%60}min`;
+  return `${m}min`;
+}
+
+async function loadProtocol() {
+  const tbody = document.getElementById('protocolTbody');
+  if (!tbody) return;
+  try {
+    const entries = await (await fetch('/api/charge-protocol?limit=200')).json();
+    tbody.innerHTML = '';
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan=\"7\" style=\"text-align:center;color:var(--muted)\">Keine Einträge</td></tr>';
+      return;
+    }
+    entries.reverse().forEach(e => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class=\"col-mono\" style=\"white-space:nowrap;\">${esc(e.ts?.replace('T',' ').slice(0,16) || '')}</td>
+        <td>${esc(e.cpName)}</td>
+        <td>${esc(e.userName || e.rfid || '–')}</td>
+        <td>${e.importedWh != null ? (e.importedWh/1000).toFixed(2)+' kWh' : '–'}</td>
+        <td>${fmtMs(e.chargeDurationMs)}</td>
+        <td>${fmtMs(e.plugDurationMs)}</td>
+        <td>${fmtMs(e.idleDurationMs)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) { console.error('loadProtocol error:', err); }
+}
+
+document.getElementById('clearProtocolBtn')?.addEventListener('click', async () => {
+  if (!confirm('Ladeprotokoll löschen?')) return;
+  await apiDelete('/api/charge-protocol');
+  loadProtocol();
 });

@@ -9,7 +9,7 @@ const fs = require('fs');
 
 const nodemailer = require('nodemailer');
 
-const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://10.100.95.10:1883';
+const MQTT_BROKER = process.env.MQTT_BROKER || '';
 const PORT        = parseInt(process.env.PORT || '3000', 10);
 const DATA_DIR    = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -17,9 +17,12 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const RFID_FILE     = path.join(DATA_DIR, 'rfid-users.json');
 const NOTIFY_FILE   = path.join(DATA_DIR, 'notify-config.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const LOG_FILE      = path.join(DATA_DIR, 'event-log.json');
+const PROTOCOL_FILE = path.join(DATA_DIR, 'charge-protocol.json');
+const EMAIL_TPL_FILE = path.join(DATA_DIR, 'email-template.html');
 
 let settings = loadJSON(SETTINGS_FILE, {});
-// MQTT broker: prefer persisted setting, then env var, then default
+// MQTT broker: prefer persisted setting, then env var
 let mqttBrokerUrl = settings.mqttBroker || MQTT_BROKER;
 
 function loadJSON(file, def) {
@@ -38,6 +41,26 @@ let notifyConfig = loadJSON(NOTIFY_FILE, {
   webhook: { enabled: true, url: '', headers: '{}', template: '' },
   monitor: { enabled: true, delayMinutes: 5, thresholdW: 100 }
 });
+
+// Event log (in-memory ring buffer + persisted to disk)
+const MAX_LOG_ENTRIES = 2000;
+let eventLog = loadJSON(LOG_FILE, []);
+
+function addLogEntry(category, message, details = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    cat: category,
+    msg: message,
+    ...details
+  };
+  eventLog.push(entry);
+  if (eventLog.length > MAX_LOG_ENTRIES) eventLog = eventLog.slice(-MAX_LOG_ENTRIES);
+  saveJSON(LOG_FILE, eventLog);
+  return entry;
+}
+
+// Charge protocol (persistent)
+let chargeProtocol = loadJSON(PROTOCOL_FILE, []);
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +119,7 @@ function setCP(id, field, value) {
       rangeCharged: null,
       faultState: null,
       hasCharged: false,
+      chargingStoppedSince: null,
       lastUpdate: null
     };
   }
@@ -103,19 +127,65 @@ function setCP(id, field, value) {
   if (field === 'plugState') {
     if (value === true  && !state.chargepoints[id].pluggedSince) state.chargepoints[id].pluggedSince = Date.now();
     if (value === false) {
+      // Car unplugged → finalize charge protocol entry
+      finalizeChargeSession(id);
       state.chargepoints[id].pluggedSince = null;
       state.chargepoints[id].idleSince = null;
       state.chargepoints[id].importedSincePlugged = null;
       state.chargepoints[id].rangeCharged = null;
       state.chargepoints[id].hasCharged = false;
+      state.chargepoints[id].chargingStoppedSince = null;
     }
   }
   // Set hasCharged flag on first active charging session
-  if (field === 'chargingState' && value === true) {
-    state.chargepoints[id].hasCharged = true;
+  if (field === 'chargingState') {
+    if (value === true) {
+      state.chargepoints[id].hasCharged = true;
+      state.chargepoints[id].chargingStoppedSince = null;
+      // Log charge start
+      if (state.chargepoints[id].chargingState !== true) {
+        addLogEntry('charge', `Ladevorgang gestartet an ${state.chargepoints[id].name}`, { cpId: id, rfid: state.chargepoints[id].rfid });
+      }
+    } else if (value === false && state.chargepoints[id].chargingState === true) {
+      // Charging just stopped
+      state.chargepoints[id].chargingStoppedSince = Date.now();
+      addLogEntry('charge', `Ladevorgang beendet an ${state.chargepoints[id].name}`, { cpId: id, rfid: state.chargepoints[id].rfid });
+    }
+  }
+  // Log fault state changes
+  if (field === 'faultState' && value > 0 && state.chargepoints[id].faultState !== value) {
+    addLogEntry('error', `Fehler an ${state.chargepoints[id].name}: fault_state=${value}`, { cpId: id, faultState: value });
   }
   state.chargepoints[id][field] = value;
   state.chargepoints[id].lastUpdate = Date.now();
+}
+
+// Finalize charge session entry for the protocol
+function finalizeChargeSession(cpId) {
+  const cp = state.chargepoints[cpId];
+  if (!cp || !cp.pluggedSince) return;
+  const now = Date.now();
+  const user = rfidUsers.find(u => u.rfid === cp.rfid) || null;
+  const entry = {
+    ts: new Date().toISOString(),
+    cpId,
+    cpName: cp.name || `Ladepunkt ${cpId}`,
+    rfid: cp.rfid || '',
+    userName: user?.name || '',
+    pluggedSince: new Date(cp.pluggedSince).toISOString(),
+    plugDurationMs: now - cp.pluggedSince,
+    chargeDurationMs: cp.chargingStoppedSince && cp.pluggedSince
+      ? cp.chargingStoppedSince - cp.pluggedSince
+      : (cp.hasCharged ? now - cp.pluggedSince : 0),
+    idleDurationMs: cp.chargingStoppedSince ? now - cp.chargingStoppedSince : 0,
+    importedWh: cp.importedSincePlugged ?? 0,
+    soc: cp.soc,
+  };
+  chargeProtocol.push(entry);
+  // Keep max 5000 entries
+  if (chargeProtocol.length > 5000) chargeProtocol = chargeProtocol.slice(-5000);
+  saveJSON(PROTOCOL_FILE, chargeProtocol);
+  addLogEntry('protocol', `Ladeprotokoll: ${entry.userName || entry.rfid || 'Unbekannt'} an ${entry.cpName}`, { cpId, importedWh: entry.importedWh });
 }
 
 // openWB v1 topic handlers
@@ -186,8 +256,11 @@ async function sendEmail(vars) {
       </table>
     </div>
   `;
-  const html = s.emailBody ? applyTemplate(s.emailBody, vars) : defaultHtml;
+  const html = s.emailBody ? applyTemplate(s.emailBody, vars)
+    : fs.existsSync(EMAIL_TPL_FILE) ? applyTemplate(fs.readFileSync(EMAIL_TPL_FILE, 'utf8'), vars)
+    : defaultHtml;
   await transporter.sendMail({ from: s.from || s.user, to: recipient, subject, html });
+  addLogEntry('mail', `E-Mail gesendet an ${recipient}`, { subject, cpId: vars.cpId });
   console.log(`E-Mail gesendet an ${recipient}: ${subject}`);
 }
 
@@ -234,7 +307,10 @@ async function sendNotification(cp, user) {
   if (notifyConfig.webhook?.enabled !== false && notifyConfig.webhook?.url) {
     try { await sendWebhook(vars); } catch (e) { errs.push('Webhook: ' + e.message); }
   }
-  if (errs.length) console.error('Benachrichtigungsfehler:', errs.join(' | '));
+  if (errs.length) {
+    console.error('Benachrichtigungsfehler:', errs.join(' | '));
+    addLogEntry('error', 'Benachrichtigungsfehler: ' + errs.join(' | '), { cpId: String(cp.id) });
+  }
 }
 
 // Set of CP IDs that have already been notified (reset when no longer idle)
@@ -498,6 +574,55 @@ app.post('/api/settings', (req, res) => {
   res.json({ ok: true, mqttBroker: mqttBrokerUrl });
 });
 
+// ─── Event Log API ──────────────────────────────────────────────────────────
+app.get('/api/logs', (req, res) => {
+  const cat = req.query.cat; // optional filter: mail, charge, error, protocol, system
+  const limit = Math.min(parseInt(req.query.limit) || 200, 2000);
+  let entries = cat ? eventLog.filter(e => e.cat === cat) : eventLog;
+  res.json(entries.slice(-limit));
+});
+
+app.delete('/api/logs', (req, res) => {
+  eventLog = [];
+  saveJSON(LOG_FILE, eventLog);
+  res.json({ ok: true });
+});
+
+// ─── Charge Protocol API ────────────────────────────────────────────────────
+app.get('/api/charge-protocol', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 200, 5000);
+  res.json(chargeProtocol.slice(-limit));
+});
+
+app.delete('/api/charge-protocol', (req, res) => {
+  chargeProtocol = [];
+  saveJSON(PROTOCOL_FILE, chargeProtocol);
+  res.json({ ok: true });
+});
+
+// ─── Email Template Upload API ──────────────────────────────────────────────
+app.get('/api/email-template', (req, res) => {
+  if (fs.existsSync(EMAIL_TPL_FILE)) {
+    res.type('html').send(fs.readFileSync(EMAIL_TPL_FILE, 'utf8'));
+  } else {
+    res.status(404).json({ error: 'Kein eigenes E-Mail-Template vorhanden' });
+  }
+});
+
+app.post('/api/email-template', (req, res) => {
+  const html = req.body?.html;
+  if (!html || typeof html !== 'string') return res.status(400).json({ error: 'html ist erforderlich' });
+  if (html.length > 200_000) return res.status(400).json({ error: 'Template zu groß (max 200 KB)' });
+  fs.writeFileSync(EMAIL_TPL_FILE, html, 'utf8');
+  addLogEntry('system', 'E-Mail-Template hochgeladen');
+  res.json({ ok: true });
+});
+
+app.delete('/api/email-template', (req, res) => {
+  if (fs.existsSync(EMAIL_TPL_FILE)) fs.unlinkSync(EMAIL_TPL_FILE);
+  res.json({ ok: true });
+});
+
 // ─── Core API ─────────────────────────────────────────────────────────────────
 app.get('/api/state',  (req, res) => res.json(state));
 app.get('/api/config', (req, res) => res.json({ broker: mqttBrokerUrl, monitor: notifyConfig.monitor || {} }));
@@ -547,7 +672,13 @@ function initMqtt(brokerUrl) {
     try { mqttClient.end(true); } catch {}
     mqttClient = null;
   }
+  if (!brokerUrl) {
+    console.log('No MQTT broker configured – waiting for settings.');
+    addLogEntry('system', 'Kein MQTT-Broker konfiguriert. Bitte in den Einstellungen eintragen.');
+    return;
+  }
   console.log(`Connecting to MQTT broker: ${brokerUrl}`);
+  addLogEntry('system', `MQTT-Verbindung wird aufgebaut zu ${brokerUrl}`);
   const client = mqtt.connect(brokerUrl, {
     clientId: `openwb-dashboard-${Math.random().toString(16).slice(2)}`,
     clean: true,
@@ -556,6 +687,7 @@ function initMqtt(brokerUrl) {
   });
   client.on('connect', () => {
     console.log('MQTT connected');
+    addLogEntry('system', `MQTT verbunden mit ${brokerUrl}`);
     client.subscribe('openWB/#', { qos: 0 }, (err) => {
       if (err) console.error('Subscribe error:', err);
       else console.log('Subscribed to openWB/#');
@@ -565,7 +697,10 @@ function initMqtt(brokerUrl) {
     try { handleMqttMessage(topic, payload); }
     catch (e) { console.error('Parse error for topic', topic, e.message); }
   });
-  client.on('error', (err) => console.error('MQTT error:', err.message));
+  client.on('error', (err) => {
+    console.error('MQTT error:', err.message);
+    addLogEntry('error', `MQTT Fehler: ${err.message}`);
+  });
   client.on('reconnect', () => console.log('MQTT reconnecting...'));
   client.on('offline', () => console.log('MQTT offline'));
   mqttClient = client;
@@ -575,4 +710,7 @@ initMqtt(mqttBrokerUrl);
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => console.log(`Dashboard running on http://0.0.0.0:${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Dashboard running on http://0.0.0.0:${PORT}`);
+  addLogEntry('system', `Dashboard gestartet auf Port ${PORT}`);
+});

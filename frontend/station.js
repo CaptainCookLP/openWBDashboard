@@ -93,9 +93,10 @@ function txt(id, val) {
 }
 
 function stateInfo(cp) {
-  if (cp.chargingState)   return { cls: 'state-charging', badge: 'badge-charging', label: 'Lädt' };
-  if (cp.plugState)       return { cls: 'state-plugged',  badge: 'badge-plugged',  label: 'Verbunden' };
-  if (cp.plugState === false) return { cls: 'state-idle', badge: 'badge-idle',     label: 'Frei' };
+  if (cp.faultState > 0)      return { cls: 'state-fault',    badge: 'badge-fault',    label: cp.faultState === 1 ? 'Warnung' : 'Fehler' };
+  if (cp.chargingState)       return { cls: 'state-charging', badge: 'badge-charging', label: 'Lädt' };
+  if (cp.plugState)           return { cls: 'state-plugged',  badge: 'badge-plugged',  label: 'Verbunden' };
+  if (cp.plugState === false) return { cls: 'state-idle',     badge: 'badge-idle',     label: 'Frei' };
   return { cls: 'state-unknown', badge: 'badge-unknown', label: 'Unbekannt' };
 }
 
@@ -164,6 +165,17 @@ function updatePanel(side, cp) {
   txt(`${side}Duration`, plugDur);
   txt(`${side}Soc`,      cp.soc != null ? `${parseFloat(cp.soc).toFixed(0)} %` : '–');
   txt(`${side}Rfid`,     cp.rfid || '–');
+
+  // Idle time (not charging since)
+  const idleEl = document.getElementById(`${side}Idle`);
+  if (idleEl) {
+    const csSince = cp.chargingStoppedSince;
+    if (csSince && cp.plugState === true && !cp.chargingState) {
+      idleEl.textContent = fmtDuration(now - csSince);
+    } else {
+      idleEl.textContent = '–';
+    }
+  }
 
   // Phases
   const hasPh = cp.current1 != null || cp.current2 != null || cp.current3 != null;
