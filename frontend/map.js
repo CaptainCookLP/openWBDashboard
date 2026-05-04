@@ -302,7 +302,10 @@ imageUpload.addEventListener('change', (e) => {
         try {
             await fetch('/api/map', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Basic ' + btoa('admin:openwb2024')
+                },
                 body: JSON.stringify({ image: base64Str })
             });
             alert('Bild gespeichert!');
