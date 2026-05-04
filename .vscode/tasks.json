@@ -4,7 +4,7 @@
     {
       "label": "docker-build",
       "type": "shell",
-      "command": "docker build --pull --rm -f backend/Dockerfile -t openwbdashboard:latest .",
+      "command": "docker build --pull --rm -f Dockerfile -t openwbdashboard:latest .",
       "group": "build",
       "presentation": {
         "reveal": "always",

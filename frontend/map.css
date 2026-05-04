@@ -1,0 +1,180 @@
+/* map.css */
+.map-container {
+    padding: 1rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.toolbar h2 {
+    margin: 0;
+}
+
+/* Legend */
+.map-legend {
+    display: flex;
+    gap: 15px;
+    font-size: 0.9rem;
+    background: var(--surface2, #22263a);
+    color: var(--text, #e2e8f0);
+    padding: 5px 15px;
+    border-radius: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    border: 1px solid var(--border, #2e3347);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.map-area {
+    position: relative;
+    width: 100%;
+    background-color: #f9f9f9;
+    overflow: auto;
+    user-select: none;
+}
+
+.map-area.edit-mode {
+    border: 2px solid #007bff;
+    cursor: crosshair;
+}
+
+.map-content {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto;
+    line-height: 0;
+}
+
+#mapImage {
+    display: block;
+    pointer-events: none;
+    max-width: 100%;
+    height: auto;
+}
+
+.marker {
+    position: absolute;
+    min-width: 40px;
+    padding: 0 12px;
+    height: 40px;
+    background: #6c757d; /* Dunklerer Hintergrund für nicht-zugewiesene Marker */
+    border-radius: 20px;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    border: 3px solid white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6); /* Bessere Lesbarkeit für weiße Schrift */
+    cursor: pointer;
+    transition: background-color 0.3s;
+    white-space: nowrap;
+}
+
+.edit-mode .marker {
+    cursor: grab;
+}
+.edit-mode .marker:active {
+    cursor: grabbing;
+}
+
+.status-free { background-color: #28a745; }
+.status-occupied { background-color: #17a2b8; }
+.status-charging { background-color: #ffc107; color: #111; text-shadow: none; }
+.status-error { background-color: #dc3545; }
+
+/* Modal styles (simple) */
+.modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-content {
+    background: var(--surface, #1a1d27);
+    color: var(--text, #e2e8f0);
+    border: 1px solid var(--border, #2e3347);
+    padding: 1.5rem;
+    border-radius: 8px;
+    min-width: 300px;
+    box-shadow: var(--shadow, 0 4px 24px rgba(0,0,0,.4));
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    color: var(--text, #fff);
+}
+
+.modal-content select, 
+.modal-content input {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 15px;
+    background: var(--surface2, #22263a);
+    color: var(--text, #e2e8f0);
+    border: 1px solid var(--border, #2e3347);
+    border-radius: 4px;
+}
+
+.modal-content select {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+    .toolbar-right {
+        display: none !important;
+    }
+    .map-container {
+        padding: 0.5rem;
+    }
+    .toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .map-legend {
+        flex-wrap: wrap;
+    }
+}

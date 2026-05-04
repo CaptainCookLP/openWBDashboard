@@ -20,6 +20,8 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const LOG_FILE      = path.join(DATA_DIR, 'event-log.json');
 const PROTOCOL_FILE = path.join(DATA_DIR, 'charge-protocol.json');
 const EMAIL_TPL_FILE = path.join(DATA_DIR, 'email-template.html');
+const MAP_CONFIG_FILE = path.join(DATA_DIR, 'map-config.json');
+const MAP_BG_FILE    = path.join(DATA_DIR, 'map-bg.jpg');
 
 let settings = loadJSON(SETTINGS_FILE, {});
 // MQTT broker: prefer persisted setting, then env var
@@ -453,9 +455,43 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// Basic Authentication Middleware
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'openwb2024';
+
+const publicPaths = [
+  '/public-map.html',
+  '/public-map.js',
+  '/style.css',
+  '/map.css',
+  '/favicon.ico'
+];
+
+app.use((req, res, next) => {
+  // Allow public paths and socket.io
+  if (publicPaths.includes(req.path) || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  // Allow GET requests to specific APIs needed by public map
+  if (req.method === 'GET' && (req.path === '/api/map' || req.path === '/api/map/image' || req.path === '/api/rfid-users')) {
+    return next();
+  }
+
+  // Check Authentication
+  const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+  const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+  if (login === ADMIN_USER && password === ADMIN_PASS) {
+    return next();
+  }
+  
+  res.set('WWW-Authenticate', 'Basic realm="Authentication Required"');
+  res.status(401).send('Authentication required.');
+});
+
 // Serve frontend from /public
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // ─── RFID Users API ───────────────────────────────────────────────────────────
 app.get('/api/rfid-users', (req, res) => res.json(rfidUsers));
@@ -621,6 +657,48 @@ app.post('/api/email-template', (req, res) => {
 app.delete('/api/email-template', (req, res) => {
   if (fs.existsSync(EMAIL_TPL_FILE)) fs.unlinkSync(EMAIL_TPL_FILE);
   res.json({ ok: true });
+});
+
+// ─── MAP API ──────────────────────────────────────────────────────────────────
+app.get('/api/map', (req, res) => {
+  const mapConfig = loadJSON(MAP_CONFIG_FILE, { markers: [] });
+  res.json(mapConfig);
+});
+
+app.post('/api/map', (req, res) => {
+  const { markers, image } = req.body;
+  if (markers === undefined && !image) {
+    return res.status(400).json({ error: 'markers or image required' });
+  }
+
+  let mapConfig = loadJSON(MAP_CONFIG_FILE, { markers: [] });
+  
+  if (markers) {
+    mapConfig.markers = markers;
+    saveJSON(MAP_CONFIG_FILE, mapConfig);
+  }
+
+  if (image) {
+    // image is assumed to be base64 data url, e.g. data:image/jpeg;base64,...
+    const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid base64 string' });
+    }
+    const buffer = Buffer.from(matches[2], 'base64');
+    fs.writeFileSync(MAP_BG_FILE, buffer);
+  }
+
+  res.json({ ok: true });
+});
+
+app.get('/api/map/image', (req, res) => {
+  if (fs.existsSync(MAP_BG_FILE)) {
+    // We can just use sendFile because MAP_BG_FILE is absolute path from __dirname usually,
+    // actually DATA_DIR is absolute, path.join makes it absolute.
+    res.sendFile(MAP_BG_FILE);
+  } else {
+    res.status(404).json({ error: 'Image not found' });
+  }
 });
 
 // ─── Core API ─────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>openWB Dashboard</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="map.css" />
 </head>
 <body>
   <header>
@@ -18,6 +19,7 @@
         <button class="tab-btn" data-tab="protocol">📋 Ladeprotokoll</button>
         <button class="tab-btn" data-tab="logs">📝 Logs</button>
         <button class="tab-btn" data-tab="settings">⚙️ Einstellungen</button>
+        <button class="tab-btn" data-tab="map">🗺️ Karte</button>
       </nav>
       <div class="connection-status" id="connStatus">
         <span class="dot disconnected"></span>
@@ -357,7 +359,65 @@
     </div>
   </div><!-- /#tab-settings -->
 
+  <!-- Map Tab -->
+  <div id="tab-map" style="display:none;">
+    <main class="map-container">
+        <div class="toolbar">
+            <div class="toolbar-left" style="display: flex; align-items: center; gap: 1rem;">
+                <h2>Ladeplatz-Karte</h2>
+                <div class="map-legend">
+                    <span class="legend-item"><span class="legend-color status-free"></span> Frei</span>
+                    <span class="legend-item"><span class="legend-color status-occupied"></span> Verbunden</span>
+                    <span class="legend-item"><span class="legend-color status-charging"></span> Lädt</span>
+                    <span class="legend-item"><span class="legend-color status-error"></span> Fehler</span>
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                <button id="btnUpload" class="btn">Bild hochladen</button>
+                <button id="btnEditToggle" class="btn">Editieren aktivieren</button>
+                <button id="btnSave" class="btn btn-primary" style="display: none;">Speichern</button>
+            </div>
+        </div>
+
+        <div class="map-area" id="mapArea">
+            <div id="mapContent" class="map-content">
+                <!-- Background Image -->
+                <img id="mapImage" src="/api/map/image" alt="Kartenhintergrund" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; this.alt='Kein Hintergrundbild vorhanden';">
+                <!-- Markers will be injected here -->
+            </div>
+        </div>
+
+        <!-- Marker Edit Modal -->
+        <div id="markerModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h3>Ladepunkt zuweisen</h3>
+                <select id="chargepointSelect">
+                    <option value="">-- Keiner --</option>
+                </select>
+                <div class="modal-actions">
+                    <button id="btnDeleteMarker" class="btn btn-danger">Marker entfernen</button>
+                    <button id="btnSaveMarker" class="btn btn-primary">Zuweisen</button>
+                    <button id="btnCancelMarker" class="btn">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marker Info Modal -->
+        <div id="infoModal" class="modal" style="display: none;">
+            <div class="modal-content" style="min-width: 250px;">
+                <h3 id="infoModalTitle">Info</h3>
+                <div id="infoModalBody" style="margin-bottom: 1rem; line-height: 1.5;"></div>
+                <div class="modal-actions">
+                    <button id="btnCloseInfo" class="btn btn-primary">X Schließen</button>
+                </div>
+            </div>
+        </div>
+    </main>
+  </div><!-- /#tab-map -->
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
+  <script src="map.js"></script>
 </body>
 </html>

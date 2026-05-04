@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>openWB Ladeplätze - Öffentliche Karte</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="map.css">
+    <style>
+        .map-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        /* Verstecke die Links im öffentlichen Header */
+        .tab-nav {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <header>
+      <div class="header-inner" style="display: flex; gap: 1rem; align-items: center; padding: 1rem;">
+        <div class="logo">
+          <span class="logo-icon">⚡</span>
+          <span class="logo-text">openWB <span class="logo-sub">Ladeplätze</span></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="map-container">
+        <div class="toolbar" style="justify-content: center;">
+            <div class="map-legend">
+                <span class="legend-item"><span class="legend-color status-free"></span> Frei</span>
+                <span class="legend-item"><span class="legend-color status-occupied"></span> Verbunden</span>
+                <span class="legend-item"><span class="legend-color status-charging"></span> Lädt</span>
+                <span class="legend-item"><span class="legend-color status-error"></span> Fehler</span>
+            </div>
+        </div>
+
+        <div class="map-area" id="mapArea">
+            <div id="mapContent" class="map-content">
+                <!-- Background Image -->
+                <img id="mapImage" src="/api/map/image" alt="Kartenhintergrund" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; this.alt='Kein Hintergrundbild vorhanden';">
+                <!-- Markers will be injected here -->
+            </div>
+        </div>
+
+        <!-- Marker Info Modal -->
+        <div id="infoModal" class="modal" style="display: none;">
+            <div class="modal-content" style="min-width: 250px;">
+                <h3 id="infoModalTitle">Info</h3>
+                <div id="infoModalBody" style="margin-bottom: 1rem; line-height: 1.5;"></div>
+                <div class="modal-actions">
+                    <button id="btnCloseInfo" class="btn btn-primary">X Schließen</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="public-map.js"></script>
+</body>
+</html>
